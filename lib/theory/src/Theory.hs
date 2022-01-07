@@ -255,7 +255,7 @@ import           Control.Monad.Reader
 import qualified Control.Monad.State                 as MS
 import           Control.Parallel.Strategies
 
-import           Extension.Data.Label                hiding (get)
+import           Extension.Data.Label                
 import qualified Extension.Data.Label                as L
 import qualified Data.Label.Point
 import qualified Data.Label.Poly
@@ -276,7 +276,10 @@ import           Theory.Tools.IntruderRules
 
 import           Term.Positions
 
+import           System.Timing                   (timed)
+
 import           Utils.Misc
+
 
 ------------------------------------------------------------------------------
 -- Specific proof types
@@ -2298,7 +2301,7 @@ applyPartialEvaluationDiff evalStyle autoSources thy0 =
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.
-proveTheory :: (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
+{-proveTheory :: (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
             -> Prover
             -> ClosedTheory
             -> ClosedTheory
@@ -2317,7 +2320,36 @@ proveTheory selector prover thy =
       where
         ctxt    = getProofContext lem thy
         sys     = mkSystem ctxt (theoryRestrictions thy) preItems $ L.get lFormula lem
+        add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf-}
+
+proveTheory :: (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
+            -> Prover
+            -> ClosedTheory
+            -> ClosedTheory
+proveTheory selector prover thy =
+    modifyTheoryLemmas thy (prove selector prover thy)
+
+
+
+modifyTheoryLemmas :: Theory sig c r p s -> (TheoryItem r p s-> MS.State [a0] (TheoryItem r p s))-> Theory sig c r p s
+modifyTheoryLemmas thy act = 
+    modify thyItems ((`MS.evalState` []) . mapM act) thy
+
+prove :: (Monad m, MS.MonadState [TheoryItem r IncrementalProof s] m) => (Lemma IncrementalProof -> Bool) -> Prover -> ClosedTheory -> TheoryItem r IncrementalProof s -> m (TheoryItem r IncrementalProof s)
+prove selector prover thy item = case item of
+      LemmaItem l0 -> do l <- MS.gets (LemmaItem . proveLemma l0)
+                         MS.modify (l :)
+                         return l
+      _            -> do return item
+    where
+    proveLemma lem preItems
+      | selector lem = modify lProof add lem
+      | otherwise    = lem
+      where
+        ctxt    = getProofContext lem thy
+        sys     = mkSystem ctxt (theoryRestrictions thy) preItems $ L.get lFormula lem
         add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
+
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.
