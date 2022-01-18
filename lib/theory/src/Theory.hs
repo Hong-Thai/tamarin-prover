@@ -2332,8 +2332,18 @@ proveTheory selector prover thy =
 
 
 modifyTheoryLemmas :: Theory sig c r p s -> (TheoryItem r p s-> MS.State [a0] (TheoryItem r p s))-> Theory sig c r p s
-modifyTheoryLemmas thy act = 
+modifyTheoryLemmas y act = 
     modify thyItems ((`MS.evalState` []) . mapM act) thy
+    -- ROBERT: I don't like that MS.evalState is in here. But after trying for half an hour, 
+    -- I understand now why MS.evalState needs to be in here ... fclabels does not provide a monadic operations, only for specific monads ... 
+    -- https://hackage.haskell.org/package/fclabels-2.0.5.1/docs/Data-Label-Monadic.html
+    -- I still think the task of traversing the theory for lemmas and the concrete actions should be seperate, so I propopose:
+    -- 1. write a monadic Version of mapTheoryItems or foldTheoryItems called traverseTheoryItems.
+    -- 2. make proveLemma a top-level function, note that it's pure
+    -- 3. make proveLemmaM the monadic variant of proveLemma.  it goes from Lemma -> m (Lemma), more or less, and stores the lemmas proven so far.
+    -- 4. integrate traverseTheoryItems into modifyTheoryLemmas
+    -- 5. compose proveLemmaM and modifyTheoreyLemmas to proveTheory
+    -- 6. remind me to have a look at this again ;)
 
 prove :: (Monad m, MS.MonadState [TheoryItem r IncrementalProof s] m) => (Lemma IncrementalProof -> Bool) -> Prover -> ClosedTheory -> TheoryItem r IncrementalProof s -> m (TheoryItem r IncrementalProof s)
 prove selector prover thy item = case item of
