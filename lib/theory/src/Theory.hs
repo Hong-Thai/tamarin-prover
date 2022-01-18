@@ -2327,23 +2327,18 @@ proveTheory :: (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
             -> ClosedTheory
             -> ClosedTheory
 proveTheory selector prover thy =
-    modifyTheoryLemmas thy (prove selector prover thy)
+    modifyTheoryLemmas thy (mapM (prove selector prover thy)) -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
 
-
-
-modifyTheoryLemmas :: Theory sig c r p s -> (TheoryItem r p s-> MS.State [a0] (TheoryItem r p s))-> Theory sig c r p s
-modifyTheoryLemmas y act = 
-    modify thyItems ((`MS.evalState` []) . mapM act) thy
-    -- ROBERT: I don't like that MS.evalState is in here. But after trying for half an hour, 
-    -- I understand now why MS.evalState needs to be in here ... fclabels does not provide a monadic operations, only for specific monads ... 
-    -- https://hackage.haskell.org/package/fclabels-2.0.5.1/docs/Data-Label-Monadic.html
-    -- I still think the task of traversing the theory for lemmas and the concrete actions should be seperate, so I propopose:
-    -- 1. write a monadic Version of mapTheoryItems or foldTheoryItems called traverseTheoryItems.
-    -- 2. make proveLemma a top-level function, note that it's pure
-    -- 3. make proveLemmaM the monadic variant of proveLemma.  it goes from Lemma -> m (Lemma), more or less, and stores the lemmas proven so far.
-    -- 4. integrate traverseTheoryItems into modifyTheoryLemmas
-    -- 5. compose proveLemmaM and modifyTheoreyLemmas to proveTheory
-    -- 6. remind me to have a look at this again ;)
+modifyTheoryLemmas = liftA2 (modify thyItems) 
+    -- ROBERT: 
+    -- 1. read this about the f <$> a <*> b idiom and liftA2
+        -- https://hackage.haskell.org/package/base-4.16.0.0/docs/Control-Applicative.html#v:liftA2
+        -- https://stackoverflow.com/questions/13437773/what-is-a-function-composition-algorithm-that-will-work-for-multiple-arguments
+        -- it's fairly complicated, but it's what we need here -> turn a pure function into a monadic one 
+    -- 2. traverse only over Lemmas here (i.e., second argument goes from Lemma -> m (Lemma):
+          -- look at foldTheoryItems and mapTheoryItems to see how to do that. (Maybe write function traverseTheoryItems that is like mapTheoryItems, but monadic, und use that one here.)
+    -- 3. use proveLemma (see comment below)
+    -- 4. remind me to have a look at this again ;)
 
 prove :: (Monad m, MS.MonadState [TheoryItem r IncrementalProof s] m) => (Lemma IncrementalProof -> Bool) -> Prover -> ClosedTheory -> TheoryItem r IncrementalProof s -> m (TheoryItem r IncrementalProof s)
 prove selector prover thy item = case item of
@@ -2352,6 +2347,7 @@ prove selector prover thy item = case item of
                          return l
       _            -> do return item
     where
+    -- ROBERT: I think proveLemma should be  top-level function, note that it's pure, which is nice, and the function type is clear about its semantics
     proveLemma lem preItems
       | selector lem = modify lProof add lem
       | otherwise    = lem
