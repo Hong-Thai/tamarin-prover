@@ -255,7 +255,7 @@ import           Control.Monad.Reader
 import qualified Control.Monad.State                 as MS
 import           Control.Parallel.Strategies
 
-import           Extension.Data.Label                
+import           Extension.Data.Label
 import qualified Extension.Data.Label                as L
 import qualified Data.Label.Point
 import qualified Data.Label.Poly
@@ -2322,22 +2322,33 @@ proveTheory selector prover thy =
         sys     = mkSystem ctxt (theoryRestrictions thy) preItems $ L.get lFormula lem
         add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf-}
 
-proveTheory :: (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
-            -> Prover
-            -> ClosedTheory
-            -> ClosedTheory
+-- proveTheory :: (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
+--             -> Prover
+--             -> ClosedTheory
+--             -> ClosedTheory
 proveTheory selector prover thy =
-    modifyTheoryLemmas thy (mapM (prove selector prover thy)) -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
+    modifyTheoryLemmas (mapM (prove selector prover thy)) thy -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
 
-modifyTheoryLemmas = liftA2 (modify thyItems) 
+traverseLemmas :: Monad m => (Lemma p1 -> m (Lemma p2)) -> TheoryItem r p1 s -> m (TheoryItem r p2 s)
+traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
+  where act' lem = LemmaItem <$> act lem
+          -- ROBERT: FYI, this is the same as:
+                  -- (return . LemmaItem) =<<  act lem
+          -- which is same as:
+                  -- do
+                  --    lem' <- act lem
+                  --    return $ LemmaItem lem'
+
+modifyTheoryLemmas :: Monad m => (Lemma p -> m (Lemma p)) -> Theory sig c r p s -> m (Theory sig c r p s)
+modifyTheoryLemmas act thy = do
+                          let items = L.get thyItems thy
+                          items' <- mapM (traverseLemmas act) items
+                          return $ L.set thyItems items' thy
     -- ROBERT: 
-    -- 1. read this about the f <$> a <*> b idiom and liftA2
-        -- https://hackage.haskell.org/package/base-4.16.0.0/docs/Control-Applicative.html#v:liftA2
-        -- https://stackoverflow.com/questions/13437773/what-is-a-function-composition-algorithm-that-will-work-for-multiple-arguments
-        -- it's fairly complicated, but it's what we need here -> turn a pure function into a monadic one 
-    -- 2. traverse only over Lemmas here (i.e., second argument goes from Lemma -> m (Lemma):
-          -- look at foldTheoryItems and mapTheoryItems to see how to do that. (Maybe write function traverseTheoryItems that is like mapTheoryItems, but monadic, und use that one here.)
-    -- 3. use proveLemma (see comment below)
+    -- 1. traverse only over Lemmas here (i.e., second argument goes from Lemma -> m (Lemma):
+          -- look at foldTheoryItems and mapTheoryItems to see how to do that
+          --  write function traverseTheoryItems that is like mapTheoryItems, but monadic
+    -- 2. use proveLemma (see comment below)
     -- 4. remind me to have a look at this again ;)
 
 prove :: (Monad m, MS.MonadState [TheoryItem r IncrementalProof s] m) => (Lemma IncrementalProof -> Bool) -> Prover -> ClosedTheory -> TheoryItem r IncrementalProof s -> m (TheoryItem r IncrementalProof s)
