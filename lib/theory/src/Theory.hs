@@ -2327,7 +2327,7 @@ proveTheory selector prover thy =
 --             -> ClosedTheory
 --             -> ClosedTheory
 proveTheory selector prover thy =
-    modifyTheoryLemmas (mapM (prove selector prover thy)) thy -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
+    modifyTheoryLemmas (mapM (proveLemma' selector prover thy)) thy -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
 
 traverseLemmas :: Monad m => (Lemma p1 -> m (Lemma p2)) -> TheoryItem r p1 s -> m (TheoryItem r p2 s)
 traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
@@ -2351,22 +2351,19 @@ modifyTheoryLemmas act thy = do
     -- 2. use proveLemma (see comment below)
     -- 4. remind me to have a look at this again ;)
 
-prove :: (Monad m, MS.MonadState [TheoryItem r IncrementalProof s] m) => (Lemma IncrementalProof -> Bool) -> Prover -> ClosedTheory -> TheoryItem r IncrementalProof s -> m (TheoryItem r IncrementalProof s)
-prove selector prover thy item = case item of
-      LemmaItem l0 -> do l <- MS.gets (LemmaItem . proveLemma l0)
-                         MS.modify (l :)
-                         return l
-      _            -> do return item
-    where
-    -- ROBERT: I think proveLemma should be  top-level function, note that it's pure, which is nice, and the function type is clear about its semantics
-    proveLemma lem preItems
-      | selector lem = modify lProof add lem
-      | otherwise    = lem
-      where
-        ctxt    = getProofContext lem thy
-        sys     = mkSystem ctxt (theoryRestrictions thy) preItems $ L.get lFormula lem
-        add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
+proveLemma selector prover thy lem preItems
+  | selector lem = modify lProof add lem
+  | otherwise    = lem
+  where
+    ctxt    = getProofContext lem thy
+    sys     = mkSystem ctxt (theoryRestrictions thy) (fmap LemmaItem preItems) $ L.get lFormula lem
+    add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
 
+proveLemma' selector prover thy lemma = do
+    previousLemmas <- MS.get
+    let provenLemma = proveLemma selector prover thy lemma previousLemmas
+    MS.modify (provenLemma :)
+    return provenLemma
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.
