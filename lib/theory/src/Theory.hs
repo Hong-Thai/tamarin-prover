@@ -245,7 +245,7 @@ import           Data.Binary
 import           Data.List
 import           Data.Maybe
 import           Data.Either
-import           Data.Monoid                         (Sum(..))
+import           Data.Monoid                         (Sum(..), Ap (getAp))
 import qualified Data.Set                            as S
 
 import           Control.Basics
@@ -2327,7 +2327,7 @@ proveTheory selector prover thy =
 --             -> ClosedTheory
 --             -> ClosedTheory
 proveTheory selector prover thy =
-    modifyTheoryLemmas (mapM (proveLemma' selector prover thy)) thy -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
+    modifyTheoryLemmas (mapM (proveLemma' selector prover thy)) (return thy) -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
 
 traverseLemmas :: Monad m => (Lemma p1 -> m (Lemma p2)) -> TheoryItem r p1 s -> m (TheoryItem r p2 s)
 traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
@@ -2350,6 +2350,17 @@ modifyTheoryLemmas act thy = do
           --  write function traverseTheoryItems that is like mapTheoryItems, but monadic
     -- 2. use proveLemma (see comment below)
     -- 4. remind me to have a look at this again ;)
+
+
+traverseTheoryItems f g =
+    foldTheoryItem f' RestrictionItem g' TextItem PredicateItem SapicItem
+    where f' item = do
+            item' <- f item
+            return $ RuleItem . item'
+          g' item = do
+            item' <- g item
+            return $ LemmaItem . fmap item'
+
 
 proveLemma selector prover thy lem preItems
   | selector lem = modify lProof add lem
