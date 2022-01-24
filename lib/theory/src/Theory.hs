@@ -2332,13 +2332,13 @@ proveTheory selector prover thy =
 -- traverseLemmas :: Monad m => (Lemma p1 -> m (Lemma p2)) -> TheoryItem r p1 s -> m (TheoryItem r p2 s)
 traverseLemmas :: (Lemma p1 -> IO (Lemma p2)) -> TheoryItem r p1 s -> IO (TheoryItem r p2 s)
 traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
-  where act' lem = --LemmaItem <$> act lem
+  where act' lem = LemmaItem <$> act lem
           -- ROBERT: FYI, this is the same as:
                   -- (return . LemmaItem) =<<  act lem
           -- which is same as:
-                   do
-                      (lem',t) <- timed (act lem)
-                      return $ LemmaItem $ lem'
+                   --do
+                     -- (lem',t) <- timed (act lem)
+                     -- return $ LemmaItem $ lem'
 
 -- modifyTheoryLemmas :: Monad m => (Lemma p -> m (Lemma p)) -> Theory sig c r p s -> m (Theory sig c r p s)
 modifyTheoryLemmas :: (Lemma p1 -> IO (Lemma p1)) -> Theory sig c r p1 s -> IO (Theory sig c r p1 s)
@@ -2387,11 +2387,13 @@ proveLemma selector prover thy lem preItems
     sys     = mkSystem ctxt (theoryRestrictions thy) (fmap LemmaItem preItems) $ L.get lFormula lem
     add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
 
-proveLemma' selector prover thy lemma = do
-    previousLemmas <- MS.get
-    let provenLemma = proveLemma selector prover thy lemma previousLemmas
-    MS.modify (provenLemma :)
-    return provenLemma
+proveLemma' selector prover thy lemma = do 
+    (res,t) <-timed $ do
+              previousLemmas <- MS.get
+              let provenLemma = proveLemma selector prover thy lemma previousLemmas
+              MS.modify (provenLemma :)
+              return provenLemma
+    return res
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.
