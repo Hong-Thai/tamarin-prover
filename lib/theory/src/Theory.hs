@@ -2338,7 +2338,7 @@ traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionIte
           -- which is same as:
                    --do
                      -- (lem',t) <- timed (act lem)
-                     -- return $ LemmaItem $ lem'
+                     -- return $ LemmaItem lem'
 
 -- modifyTheoryLemmas :: Monad m => (Lemma p -> m (Lemma p)) -> Theory sig c r p s -> m (Theory sig c r p s)
 modifyTheoryLemmas :: (Lemma p1 -> IO (Lemma p1)) -> Theory sig c r p1 s -> IO (Theory sig c r p1 s)
@@ -2354,14 +2354,14 @@ modifyTheoryLemmas act thy = do
     -- 4. remind me to have a look at this again ;)
 
 
-traverseTheoryItems f g =
-    foldTheoryItem f' RestrictionItem g' TextItem PredicateItem SapicItem
-    where f' item = do
-            item' <- f item
-            return $ RuleItem . item'
-          g' item = do
-            item' <- g item
-            return $ LemmaItem . fmap item'
+-- traverseTheoryItems f g =
+--     foldTheoryItem f' RestrictionItem g' TextItem PredicateItem SapicItem
+--     where f' item = do
+--             item' <- f item
+--             return $ RuleItem . item'
+--           g' item = do
+--             item' <- g item
+--             return $ LemmaItem . fmap item'
 
 
 -- traverseTheoryItems :: Monad m => m (r -> r') -> m (p -> p') -> m (TheoryItem r p s -> TheoryItem r' p' s)
