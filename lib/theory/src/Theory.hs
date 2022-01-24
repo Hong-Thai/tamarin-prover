@@ -2329,17 +2329,19 @@ proveTheory selector prover thy =
 proveTheory selector prover thy =
     modifyTheoryLemmas (mapM (proveLemma' selector prover thy)) (return thy) -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
 
-traverseLemmas :: Monad m => (Lemma p1 -> m (Lemma p2)) -> TheoryItem r p1 s -> m (TheoryItem r p2 s)
+-- traverseLemmas :: Monad m => (Lemma p1 -> m (Lemma p2)) -> TheoryItem r p1 s -> m (TheoryItem r p2 s)
+traverseLemmas :: (Lemma p1 -> IO (Lemma p2)) -> TheoryItem r p1 s -> IO (TheoryItem r p2 s)
 traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
   where act' lem = --LemmaItem <$> act lem
           -- ROBERT: FYI, this is the same as:
                   -- (return . LemmaItem) =<<  act lem
           -- which is same as:
                    do
-                      (lem',t) <- timed(return (act lem))
+                      (lem',t) <- timed (act lem)
                       return $ LemmaItem $ lem'
 
-modifyTheoryLemmas :: Monad m => (Lemma p -> m (Lemma p)) -> Theory sig c r p s -> m (Theory sig c r p s)
+-- modifyTheoryLemmas :: Monad m => (Lemma p -> m (Lemma p)) -> Theory sig c r p s -> m (Theory sig c r p s)
+modifyTheoryLemmas :: (Lemma p1 -> IO (Lemma p1)) -> Theory sig c r p1 s -> IO (Theory sig c r p1 s)
 modifyTheoryLemmas act thy = do
                           let items = L.get thyItems thy
                           items' <- mapM (traverseLemmas act) items
@@ -2352,19 +2354,19 @@ modifyTheoryLemmas act thy = do
     -- 4. remind me to have a look at this again ;)
 
 
-{-traverseTheoryItems f g =
+traverseTheoryItems f g =
     foldTheoryItem f' RestrictionItem g' TextItem PredicateItem SapicItem
     where f' item = do
             item' <- f item
             return $ RuleItem . item'
           g' item = do
             item' <- g item
-            return $ LemmaItem . fmap item'-}
+            return $ LemmaItem . fmap item'
 
 
-traverseTheoryItems :: Monad m => m (r -> r') -> m (p -> p') -> m (TheoryItem r p s -> TheoryItem r' p' s)
-traverseTheoryItems f g =
-    liftA2 mapTheoryItem f g
+-- traverseTheoryItems :: Monad m => m (r -> r') -> m (p -> p') -> m (TheoryItem r p s -> TheoryItem r' p' s)
+-- traverseTheoryItems f g =
+--     liftA2 mapTheoryItem f g
 
 mapLemmaItem :: (p1 -> p2) -> TheoryItem r p1 s -> TheoryItem r p2 s
 mapLemmaItem act = 
