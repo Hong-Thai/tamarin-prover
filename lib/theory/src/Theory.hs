@@ -2312,7 +2312,7 @@ proveTheory::(Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
                       (ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System))))
                       ClosedTheory)
 proveTheory selector prover thy =
-    modifyTheoryLemmas (mapM (proveLemma' selector prover thy)) (return thy) -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
+    modifyTheoryLemmas (mapM (proveLemma' selector prover thy)) (return thy)
 
 
 traverseLemmas :: (Lemma p1 -> IO (Lemma p2)) -> TheoryItem r p1 s -> IO (TheoryItem r p2 s)
@@ -2330,13 +2330,6 @@ modifyTheoryLemmas act thy = do
                           let items = L.get thyItems thy
                           items' <- mapM (traverseLemmas act) items
                           return $ L.set thyItems items' thy
-    -- ROBERT: 
-    -- 1. traverse only over Lemmas here (i.e., second argument goes from Lemma -> m (Lemma):
-          -- look at foldTheoryItems and mapTheoryItems to see how to do that
-          --  write function traverseTheoryItems that is like mapTheoryItems, but monadic
-    -- 2. use proveLemma (see comment below)
-    -- 4. remind me to have a look at this again ;)
-
 
 
 mapLemmaItem :: (p1 -> p2) -> TheoryItem r p1 s -> TheoryItem r p2 s
