@@ -2301,35 +2301,20 @@ applyPartialEvaluationDiff evalStyle autoSources thy0 =
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.
-{-proveTheory :: (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
+
+proveTheory::(Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
             -> Prover
             -> ClosedTheory
-            -> ClosedTheory
-proveTheory selector prover thy =
-    modify thyItems ((`MS.evalState` []) . mapM prove) thy
-  where
-    prove item = case item of
-      LemmaItem l0 -> do l <- MS.gets (LemmaItem . proveLemma l0)
-                         MS.modify (l :)
-                         return l
-      _            -> do return item
-
-    proveLemma lem preItems
-      | selector lem = modify lProof add lem
-      | otherwise    = lem
-      where
-        ctxt    = getProofContext lem thy
-        sys     = mkSystem ctxt (theoryRestrictions thy) preItems $ L.get lFormula lem
-        add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf-}
-
--- proveTheory :: (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
---             -> Prover
---             -> ClosedTheory
---             -> ClosedTheory
+            -> IO (Theory
+                      SignatureWithMaude
+                      ClosedRuleCache
+                      ClosedProtoRule
+                      (ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System))))
+                      ClosedTheory)
 proveTheory selector prover thy =
     modifyTheoryLemmas (mapM (proveLemma' selector prover thy)) (return thy) -- ROBERT: needs monadic stuff here. try "return" to make something monadic, but see below first.
 
--- traverseLemmas :: Monad m => (Lemma p1 -> m (Lemma p2)) -> TheoryItem r p1 s -> m (TheoryItem r p2 s)
+
 traverseLemmas :: (Lemma p1 -> IO (Lemma p2)) -> TheoryItem r p1 s -> IO (TheoryItem r p2 s)
 traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
   where act' lem = LemmaItem <$> act lem
@@ -2340,7 +2325,6 @@ traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionIte
                      -- (lem',t) <- timed (act lem)
                      -- return $ LemmaItem lem'
 
--- modifyTheoryLemmas :: Monad m => (Lemma p -> m (Lemma p)) -> Theory sig c r p s -> m (Theory sig c r p s)
 modifyTheoryLemmas :: (Lemma p1 -> IO (Lemma p1)) -> Theory sig c r p1 s -> IO (Theory sig c r p1 s)
 modifyTheoryLemmas act thy = do
                           let items = L.get thyItems thy
@@ -2354,19 +2338,6 @@ modifyTheoryLemmas act thy = do
     -- 4. remind me to have a look at this again ;)
 
 
--- traverseTheoryItems f g =
---     foldTheoryItem f' RestrictionItem g' TextItem PredicateItem SapicItem
---     where f' item = do
---             item' <- f item
---             return $ RuleItem . item'
---           g' item = do
---             item' <- g item
---             return $ LemmaItem . fmap item'
-
-
--- traverseTheoryItems :: Monad m => m (r -> r') -> m (p -> p') -> m (TheoryItem r p s -> TheoryItem r' p' s)
--- traverseTheoryItems f g =
---     liftA2 mapTheoryItem f g
 
 mapLemmaItem :: (p1 -> p2) -> TheoryItem r p1 s -> TheoryItem r p2 s
 mapLemmaItem act = 
@@ -2379,6 +2350,12 @@ traverseLemmaItems act =
 
 
 
+proveLemma :: (Lemma IncrementalProof -> Bool) 
+  -> Prover
+  -> ClosedTheory
+  -> ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System)))
+  -> [Lemma p]
+  -> ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System)))
 proveLemma selector prover thy lem preItems
   | selector lem = modify lProof add lem
   | otherwise    = lem
@@ -2387,6 +2364,12 @@ proveLemma selector prover thy lem preItems
     sys     = mkSystem ctxt (theoryRestrictions thy) (fmap LemmaItem preItems) $ L.get lFormula lem
     add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
 
+proveLemma' :: (Lemma IncrementalProof -> Bool)
+  -> Prover
+  -> ClosedTheory
+  -> ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System)))
+  -> IO
+      (ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System))))
 proveLemma' selector prover thy lemma = do 
     (res,t) <-timed $ do
               previousLemmas <- MS.get
