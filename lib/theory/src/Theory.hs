@@ -2302,10 +2302,11 @@ applyPartialEvaluationDiff evalStyle autoSources thy0 =
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.
-proveTheory::(Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
-            -> Prover
-            -> ClosedTheory
-            -> IO ClosedTheory
+proveTheory:: Monad m =>
+              (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
+              -> Prover
+              -> ClosedTheory
+              -> m ClosedTheory
 proveTheory selector prover thy = ST.evalStateT f []
     where f = traverseTheoryLemmas proveLemma' thy
           proveLemma'      = updateState proveLemma''
