@@ -277,6 +277,7 @@ import           Theory.Tools.IntruderRules
 import           Term.Positions
 
 import           System.Timing                   (timed)
+import qualified          Control.Monad.Trans.State as ST
 
 import           Utils.Misc
 
@@ -2227,7 +2228,7 @@ closeTheoryWithMaude sig thy0 autoSources =
 -----------------------------------------------
 
 -- | Apply partial evaluation.
-applyPartialEvaluation :: EvaluationStyle -> Bool -> ClosedTheory -> ClosedTheory
+applyPartialEvaluation :: EvaluationStyle -> Bool -> ClosedTheory -> IO ClosedTheory
 applyPartialEvaluation evalStyle autosources thy0 =
     closeTheoryWithMaude sig
       (removeSapicItems (L.modify thyItems replaceProtoRules (openTheory thy0)))
@@ -2306,37 +2307,19 @@ proveTheory::(Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
             -> Prover
             -> ClosedTheory
             -> IO ClosedTheory
-proveTheory selector prover thy =
-   modifyTheoryLemmas (proveLemma' selector prover thy) thy
+proveTheory selector prover thy = ST.evalStateT f []
+    where f = traverseTheoryLemmas proveLemmaTimed thy
+          proveLemmaTimed = updateState (proveLemma selector prover thy)
 
-
-traverseLemmas :: (Lemma p1 -> IO (Lemma p2)) -> TheoryItem r p1 s -> IO (TheoryItem r p2 s)
+traverseLemmas :: Monad f => (Lemma p1 -> f (Lemma p2)) -> TheoryItem r p1 s -> f (TheoryItem r p2 s)
 traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
   where act' lem = LemmaItem <$> act lem
-          -- ROBERT: FYI, this is the same as:
-                  -- (return . LemmaItem) =<<  act lem
-          -- which is same as:
-                   --do
-                     -- (lem',t) <- timed (act lem)
-                     -- return $ LemmaItem lem'
 
-modifyTheoryLemmas :: (Lemma p1 -> IO (Lemma p1)) -> Theory sig c r p1 s -> IO (Theory sig c r p1 s)
-modifyTheoryLemmas act thy = do
+traverseTheoryLemmas :: Monad m => (Lemma p -> m (Lemma p)) -> Theory sig c r p s -> m (Theory sig c r p s)
+traverseTheoryLemmas act thy = do
                           let items = L.get thyItems thy
                           items' <- mapM (traverseLemmas act) items
                           return $ L.set thyItems items' thy
-
-
-mapLemmaItem :: (p1 -> p2) -> TheoryItem r p1 s -> TheoryItem r p2 s
-mapLemmaItem act = 
-  foldTheoryItem RuleItem RestrictionItem (LemmaItem . fmap act) TextItem PredicateItem SapicItem
-
-
-traverseLemmaItems :: Monad m => (p1 -> p2) -> m (TheoryItem r p1 s -> TheoryItem r p2 s)
-traverseLemmaItems act = 
-  pure (mapLemmaItem act)
-
-
 
 proveLemma :: (Lemma IncrementalProof -> Bool) 
   -> Prover
@@ -2352,18 +2335,13 @@ proveLemma selector prover thy lem preItems
     sys     = mkSystem ctxt (theoryRestrictions thy) (fmap LemmaItem preItems) $ L.get lFormula lem
     add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
 
-proveLemma' :: (Lemma IncrementalProof -> Bool)
-  -> Prover
-  -> ClosedTheory
-  -> Lemma IncrementalProof 
-  -> IO (Lemma IncrementalProof)
-proveLemma' selector prover thy lemma = do 
-    (res,t) <-timed $ do
+-- | `updateState f a` fetches history h from state, invokes `f h a` and adds `a` to history
+updateState :: (MS.MonadState [b] (t1 IO), MonadTrans t1) => (t2 -> [b] -> b) -> t2 -> t1 IO b
+updateState f a = do 
               previousLemmas <- MS.get
-              let provenLemma = proveLemma selector prover thy lemma previousLemmas
-              MS.modify (provenLemma :)
-              return provenLemma
-    return res
+              (res,t) <- MS.lift . timed $ (return . (f a)) previousLemmas
+              MS.modify (res :)
+              return res
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.

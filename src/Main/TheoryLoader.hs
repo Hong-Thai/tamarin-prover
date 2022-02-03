@@ -293,7 +293,7 @@ closeThyWithMaude sig as thy0 = do
   -- fine-grained.
   let thy1 = wfCheck thy0
   -- close and prove
-  let cthy = closeTheoryWithMaude sig thy1 (argExists "auto-sources" as)
+  cthy <- closeTheoryWithMaude sig thy1 (argExists "auto-sources" as)
   return $ proveTheory (lemmaSelector as) prover $ partialEvaluation cthy
     where
       -- apply partial application
