@@ -2302,14 +2302,26 @@ applyPartialEvaluationDiff evalStyle autoSources thy0 =
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.
-
 proveTheory::(Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
             -> Prover
             -> ClosedTheory
             -> IO ClosedTheory
 proveTheory selector prover thy = ST.evalStateT f []
+    where f = traverseTheoryLemmas proveLemma' thy
+          proveLemma'      = updateState proveLemma''
+          proveLemma'' x y = return (proveLemma selector prover thy x y)
+
+-- variant that times outputs
+proveTheory'::(Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
+            -> Prover
+            -> ClosedTheory
+            -> IO ClosedTheory
+proveTheory' selector prover thy = ST.evalStateT f []
     where f = traverseTheoryLemmas proveLemmaTimed thy
-          proveLemmaTimed = updateState (proveLemma selector prover thy)
+          proveLemmaTimed = updateState proveLemmaTimed'
+          proveLemmaTimed' x y = do
+                      (res, t) <- timed $ return (proveLemma selector prover thy x y)
+                      return res
 
 traverseLemmas :: Monad f => (Lemma p1 -> f (Lemma p2)) -> TheoryItem r p1 s -> f (TheoryItem r p2 s)
 traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
@@ -2335,12 +2347,12 @@ proveLemma selector prover thy lem preItems
     sys     = mkSystem ctxt (theoryRestrictions thy) (fmap LemmaItem preItems) $ L.get lFormula lem
     add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
 
--- | `updateState f a` fetches history h from state, invokes `f h a` and adds `a` to history
-updateState :: (MS.MonadState [b] (t1 IO), MonadTrans t1) => (t2 -> [b] -> b) -> t2 -> t1 IO b
+-- | `updateState f a` fetches history h from state, invokes `f a h` and adds `a` to history
+updateState :: Monad m => (t -> [b] -> m b) -> t -> ST.StateT [b] m b
 updateState f a = do 
-              previousLemmas <- MS.get
-              (res,t) <- MS.lift . timed $ (return . (f a)) previousLemmas
-              MS.modify (res :)
+              h <- ST.get
+              res <- lift $ f a h
+              ST.modify (res :)
               return res
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
