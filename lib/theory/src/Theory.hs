@@ -2032,7 +2032,7 @@ closeTheory :: FilePath         -- ^ Path to the Maude executable.
             -> IO ClosedTheory
 closeTheory maudePath thy0 autosources = do
     sig <- toSignatureWithMaude maudePath $ L.get thySignature thy0
-    return $ closeTheoryWithMaude sig thy0 autosources
+    closeTheoryWithMaude sig thy0 autosources
 
 -- | Close a theory by closing its associated rule set and checking the proof
 -- skeletons and caching AC variants as well as precomputed case distinctions.
@@ -2145,7 +2145,7 @@ closeDiffTheoryWithMaude sig thy0 autoSources =
 
 -- | Close a theory given a maude signature. This signature must be valid for
 -- the given theory.
-closeTheoryWithMaude :: SignatureWithMaude -> OpenTranslatedTheory -> Bool -> ClosedTheory
+-- closeTheoryWithMaude :: SignatureWithMaude -> OpenTranslatedTheory -> Bool -> ClosedTheory
 closeTheoryWithMaude sig thy0 autoSources =
   if autoSources && containsPartialDeconstructions (cache items)
     then
@@ -2305,14 +2305,9 @@ applyPartialEvaluationDiff evalStyle autoSources thy0 =
 proveTheory::(Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
             -> Prover
             -> ClosedTheory
-            -> IO (Theory
-                      SignatureWithMaude
-                      ClosedRuleCache
-                      ClosedProtoRule
-                      (ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System))))
-                      ClosedTheory)
+            -> IO ClosedTheory
 proveTheory selector prover thy =
-    modifyTheoryLemmas (mapM (proveLemma' selector prover thy)) (return thy)
+   modifyTheoryLemmas (proveLemma' selector prover thy) thy
 
 
 traverseLemmas :: (Lemma p1 -> IO (Lemma p2)) -> TheoryItem r p1 s -> IO (TheoryItem r p2 s)
@@ -2346,9 +2341,9 @@ traverseLemmaItems act =
 proveLemma :: (Lemma IncrementalProof -> Bool) 
   -> Prover
   -> ClosedTheory
-  -> ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System)))
+  -> Lemma IncrementalProof 
   -> [Lemma p]
-  -> ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System)))
+  -> Lemma IncrementalProof 
 proveLemma selector prover thy lem preItems
   | selector lem = modify lProof add lem
   | otherwise    = lem
@@ -2360,9 +2355,8 @@ proveLemma selector prover thy lem preItems
 proveLemma' :: (Lemma IncrementalProof -> Bool)
   -> Prover
   -> ClosedTheory
-  -> ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System)))
-  -> IO
-      (ProtoLemma LNFormula (LTree CaseName (ProofStep (Maybe System))))
+  -> Lemma IncrementalProof 
+  -> IO (Lemma IncrementalProof)
 proveLemma' selector prover thy lemma = do 
     (res,t) <-timed $ do
               previousLemmas <- MS.get
