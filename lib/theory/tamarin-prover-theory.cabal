@@ -60,6 +60,7 @@ library
       , transformers
       , uniplate
       , exceptions
+      , time
 
       , tamarin-prover-utils
       , tamarin-prover-term
