@@ -2268,13 +2268,8 @@ closeDiffTheoryWithMaude sig thy0 autoSources =
 -- the given theory.
 -- closeTheoryWithMaude :: SignatureWithMaude -> OpenTranslatedTheory -> Bool -> ClosedTheory
 closeTheoryWithMaude sig thy0 autoSources =
-  if autoSources && containsPartialDeconstructions (cache items)
-    then
         proveTheory (const True) checkProof
       $ Theory (L.get thyName thy0) h sig (cache items') items' (L.get thyOptions thy0)
-    else
-        proveTheory (const True) checkProof
-      $ Theory (L.get thyName thy0) h sig (cache items) items (L.get thyOptions thy0)
   where
     h          = L.get thyHeuristic thy0
     cache its  = closeRuleCache restrictions (typAsms its) sig (rules its) (L.get thyCache thy0) False
@@ -2315,7 +2310,9 @@ closeTheoryWithMaude sig thy0 autoSources =
     unfoldRules          (i:is) = i:unfoldRules is
     unfoldRules              [] = []
 
-    items' = addAutoSourcesLemma hnd lemmaName (cache itemsModAC) itemsModAC
+    items' = if autoSources && containsPartialDeconstructions (cache items)
+             then addAutoSourcesLemma hnd lemmaName (cache itemsModAC) itemsModAC
+             else items
 
     -- extract source restrictions and lemmas
     restrictions = do RestrictionItem rstr <- items
