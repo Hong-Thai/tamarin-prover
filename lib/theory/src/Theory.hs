@@ -10,7 +10,6 @@
 {-# LANGUAGE DeriveAnyClass       #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-# LANGUAGE PatternGuards        #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 -- |
 -- Copyright   : (c) 2010-2012 Benedikt Schmidt & Simon Meier
 -- License     : GPL v3 (see LICENSE)
@@ -278,9 +277,6 @@ import           Theory.Tools.IntruderRules
 import           Term.Positions
 
 import           System.Timing                   (timed)
-
-import           Data.Time.Clock
-
 import qualified          Control.Monad.Trans.State as ST
 
 import           Utils.Misc
@@ -584,17 +580,6 @@ data LemmaAttribute =
 data TraceQuantifier = ExistsTrace | AllTraces
        deriving( Eq, Ord, Show, Generic, NFData, Binary )
 
-
-data ProtoTimedLemma f p = TimedLemma
-       { _lTimedName            :: String
-       , _lTimedTraceQuantifier :: TraceQuantifier
-       , _lTimedFormula         :: f
-       , _lTimedAttributes      :: [LemmaAttribute]
-       , _lTimedProof           :: p
-       , _time                  :: Maybe NominalDiffTime
-       }
-       deriving( Generic)
-
 -- | A lemma describes a property that holds in the context of a theory
 -- together with a proof of its correctness.
 data ProtoLemma f p = Lemma
@@ -606,10 +591,7 @@ data ProtoLemma f p = Lemma
        }
        deriving( Generic)
 
-
-
 type Lemma = ProtoLemma LNFormula
-type TLemma = ProtoTimedLemma LNFormula
 type SyntacticLemma = ProtoLemma SyntacticLNFormula
 
 deriving instance Eq p => Eq (Lemma p)
@@ -618,17 +600,7 @@ deriving instance Show p => Show (Lemma p)
 deriving instance NFData p => NFData (Lemma p)
 deriving instance Binary p => Binary  (Lemma p)
 
-deriving instance Eq p => Eq (TLemma p)
-deriving instance Ord p => Ord (TLemma p)
-deriving instance Show p => Show (TLemma p)
-deriving instance NFData p => NFData (TLemma p)
-deriving instance Binary p => Binary (TLemma p)
-
-
-
 $(mkLabels [''ProtoLemma])
-$(mkLabels [''ProtoTimedLemma])
-
 
 -- | A diff lemma describes a correspondence property that holds in the context of a theory
 -- together with a proof of its correctness.
@@ -661,11 +633,6 @@ $(mkLabels [''DiffLemma])
 -- Instances
 ------------
 
-instance Binary NominalDiffTime where
-      put x      = do put x
-
-      get = do Data.Binary.get
-
 instance Functor Lemma where
     fmap f (Lemma n qua fm atts prf) = Lemma n qua fm atts (f prf)
 
@@ -683,9 +650,6 @@ instance Foldable DiffLemma where
 
 instance Traversable DiffLemma where
     traverse f (DiffLemma n atts prf) = DiffLemma n atts <$> f prf
-
-instance Functor TLemma where
-    fmap f (TimedLemma n qua fm atts prf t) = TimedLemma n qua fm atts (f prf) t
 
 -- Lemma queries
 ----------------------------------
@@ -742,12 +706,6 @@ lemmaSourceKind lem
   | SourceLemma `elem` L.get lAttributes lem = RawSource
   | otherwise                                = RefinedSource
 
-timedLemmaSourceKind :: TLemma p -> SourceKind
-timedLemmaSourceKind lem
-  | SourceLemma `elem` L.get lTimedAttributes lem = RawSource
-  | otherwise                                     = RefinedSource
-
-
 -- | Adds the LHS lemma attribute.
 addLeftLemma :: ProtoLemma f p -> ProtoLemma f p
 addLeftLemma lem =
@@ -782,16 +740,6 @@ data TheoryItem r p s =
      | SapicItem s
      deriving( Show, Eq, Ord, Functor, Generic, NFData, Binary )
 
-
-data TimedTheoryItem r p s =
-       TimedRuleItem r
-     | TimedLemmaItem (TLemma p)
-     | TimedRestrictionItem Restriction
-     | TimedTextItem FormalComment
-     | TimedPredicateItem Predicate
-     | TimedSapicItem s
-     deriving( Show, Eq, Ord, Functor, Generic, NFData, Binary )
-
 -- | A diff theory item built over the given rule type.
 --   This includes
 --   - Diff Rules, which are then decomposed in either rules for both sides
@@ -820,19 +768,6 @@ data Theory sig c r p s = Theory {
        deriving( Eq, Ord, Show, Generic, NFData, Binary )
 
 $(mkLabels [''Theory])
-
-data TimedTheory sig c r p s = TimedTheory {
-         _timedThyName      :: String
-       , _timedThyHeuristic :: [GoalRanking]
-       , _timedThySignature :: sig
-       , _timedThyCache     :: c
-       , _timedThyItems     :: [TimedTheoryItem r p s]
-       , _timedThyOptions   :: Option
-       }
-       deriving( Eq, Ord, Show, Generic, NFData, Binary )
-
-$(mkLabels [''TimedTheory])
-
 
 
 -- | A diff theory contains a set of rewriting rules with diff modeling two instances
@@ -870,9 +805,6 @@ type OpenTranslatedTheory =
 type OpenDiffTheory =
     DiffTheory SignaturePure [IntrRuleAC] DiffProtoRule OpenProtoRule DiffProofSkeleton ProofSkeleton
 
-type OpenTimedTheory =
-    TimedTheory SignaturePure [IntrRuleAC] OpenProtoRule ProofSkeleton SapicElement
-
 -- | Closed theories can be proven. Invariants:
 --     1. Lemma names are unique
 --     2. All proof steps with annotated sequents are sound with respect to the
@@ -880,9 +812,6 @@ type OpenTimedTheory =
 --     3. Maude is running under the given handle.
 type ClosedTheory =
     Theory SignatureWithMaude ClosedRuleCache ClosedProtoRule IncrementalProof ()
-
-type ClosedTimedTheory =
-    TimedTheory SignatureWithMaude ClosedRuleCache ClosedProtoRule IncrementalProof  ()
 
 -- | Closed Diff theories can be proven. Invariants:
 --     1. Lemma names are unique
@@ -960,17 +889,6 @@ foldTheoryItem fRule fRestriction fLemma fText fPredicate fSapicItem i = case i 
     PredicateItem     p  -> fPredicate p
     SapicItem s -> fSapicItem s
 
-foldTimedTheoryItem
-    :: (r -> a) -> (Restriction -> a) -> (TLemma p -> a) -> (FormalComment -> a) -> (Predicate -> a) -> (s -> a)
-    -> TimedTheoryItem r p s -> a
-foldTimedTheoryItem fRule fRestriction fLemma fText fPredicate fSapicItem i = case i of
-    TimedRuleItem ru   -> fRule ru
-    TimedLemmaItem lem -> fLemma lem
-    TimedTextItem txt  -> fText txt
-    TimedRestrictionItem rstr  -> fRestriction rstr
-    TimedPredicateItem     p  -> fPredicate p
-    TimedSapicItem s -> fSapicItem s
-
 
 
 -- fold a sapic item.
@@ -1033,10 +951,6 @@ rightTheoryRules =
 theoryRestrictions :: Theory sig c r p s -> [Restriction]
 theoryRestrictions =
     foldTheoryItem (const []) return (const []) (const []) (const []) (const []) <=< L.get thyItems
-
-timedTheoryRestrictions :: TimedTheory sig c r p s -> [Restriction]
-timedTheoryRestrictions =
-    foldTimedTheoryItem (const []) return (const []) (const []) (const []) (const []) <=< L.get timedThyItems
 
 -- | All lemmas of a theory.
 theoryLemmas :: Theory sig c r p s -> [Lemma p]
@@ -1950,40 +1864,6 @@ getProofContext l thy = ProofContext
         lattr = (headMay [Heuristic gr
                     | LemmaHeuristic gr <- L.get lAttributes l])
 
-
-getTimedProofContext :: TLemma a -> ClosedTimedTheory -> ProofContext
-getTimedProofContext l thy = ProofContext
-    ( L.get timedThySignature                       thy)
-    ( L.get (crcRules . timedThyCache)              thy)
-    ( L.get (crcInjectiveFactInsts . timedThyCache) thy)
-    kind
-    ( L.get (cases . timedThyCache)                 thy)
-    inductionHint
-    specifiedHeuristic
-    (toSystemTraceQuantifier $ L.get lTimedTraceQuantifier l)
-    (L.get lTimedName l)
-    ([ h | HideLemma h <- L.get lTimedAttributes l])
-    False
-    (all isSubtermRule  $ filter isDestrRule $ intruderRules $ L.get (crcRules . timedThyCache) thy)
-    (any isConstantRule $ filter isDestrRule $ intruderRules $ L.get (crcRules . timedThyCache) thy)
-  where
-    kind    = timedLemmaSourceKind l
-    cases   = case kind of RawSource     -> crcRawSources
-                           RefinedSource -> crcRefinedSources
-    inductionHint
-      | any (`elem` [SourceLemma, InvariantLemma]) (L.get lTimedAttributes l) = UseInduction
-      | otherwise                                                        = AvoidInduction
-
-    -- Heuristic specified for the lemma > globally specified heuristic > default heuristic
-    specifiedHeuristic = case lattr of
-        Just lh -> Just lh
-        Nothing  -> case L.get timedThyHeuristic thy of
-                    [] -> Nothing
-                    gh -> Just (Heuristic gh)
-      where
-        lattr = (headMay [Heuristic gr
-                    | LemmaHeuristic gr <- L.get lTimedAttributes l])
-
 -- | Get the proof context for a lemma of the closed theory.
 getProofContextDiff :: Side -> Lemma a -> ClosedDiffTheory -> ProofContext
 getProofContextDiff s l thy = case s of
@@ -2419,40 +2299,31 @@ applyPartialEvaluationDiff evalStyle autoSources thy0 =
 
 -- | Prove both the assertion soundness as well as all lemmas of the theory. If
 -- the prover fails on a lemma, then its proof remains unchanged.
---proveTheory:: Monad m =>
- --             (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
-   --           -> Prover
-     --         -> ClosedTheory
-       --       -> m ClosedTheory
+proveTheory:: Monad m =>
+              (Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
+              -> Prover
+              -> ClosedTheory
+              -> m ClosedTheory
 proveTheory selector prover thy = ST.evalStateT f []
     where f = traverseTheoryLemmas proveLemma' thy
           proveLemma'      = updateState proveLemma''
           proveLemma'' x y = return (proveLemma selector prover thy x y)
 
-
-
-
 -- variant that times outputs
-proveTheory'::(TLemma IncrementalProof -> Bool)   -- ^ Lemma selector.
+proveTheory'::(Lemma IncrementalProof -> Bool)   -- ^ Lemma selector.
             -> Prover
-            -> ClosedTimedTheory
-            -> IO ClosedTimedTheory --(res,t)
+            -> ClosedTheory
+            -> IO ClosedTheory
 proveTheory' selector prover thy = ST.evalStateT f []
-    where f = traverseTimedTheoryLemmas proveLemmaTimed thy
-          proveLemmaTimed = updateState proveLemmaTimed' --(fold über rückgabetypen)
+    where f = traverseTheoryLemmas proveLemmaTimed thy
+          proveLemmaTimed = updateState proveLemmaTimed'
           proveLemmaTimed' x y = do
-                      (res, t) <- timed $ return (proveTimedLemma selector prover thy x y)
-                      L.set time t res
+                      (res, t) <- timed $ return (proveLemma selector prover thy x y)
                       return res
-
 
 traverseLemmas :: Monad f => (Lemma p1 -> f (Lemma p2)) -> TheoryItem r p1 s -> f (TheoryItem r p2 s)
 traverseLemmas act = foldTheoryItem (return . RuleItem) (return . RestrictionItem) act' (return . TextItem) (return . PredicateItem) (return . SapicItem)
   where act' lem = LemmaItem <$> act lem
-
-traverseTimedLemmas :: Monad f => (TLemma p1 -> f (TLemma p2)) -> TimedTheoryItem r p1 s -> f (TimedTheoryItem r p2 s)
-traverseTimedLemmas act = foldTimedTheoryItem (return . TimedRuleItem) (return . TimedRestrictionItem) act' (return . TimedTextItem) (return . TimedPredicateItem) (return . TimedSapicItem)
-  where act' lem = TimedLemmaItem <$> act lem
 
 traverseTheoryLemmas :: Monad m => (Lemma p -> m (Lemma p)) -> Theory sig c r p s -> m (Theory sig c r p s)
 traverseTheoryLemmas act thy = do
@@ -2460,18 +2331,12 @@ traverseTheoryLemmas act thy = do
                           items' <- mapM (traverseLemmas act) items
                           return $ L.set thyItems items' thy
 
-traverseTimedTheoryLemmas :: Monad m => (TLemma p -> m (TLemma p)) -> TimedTheory sig c r p s -> m (TimedTheory sig c r p s)
-traverseTimedTheoryLemmas act thy = do
-                          let items = L.get timedThyItems thy
-                          items' <- mapM (traverseTimedLemmas act) items
-                          return $ L.set timedThyItems items' thy
-
-proveLemma :: (Lemma IncrementalProof -> Bool)
+proveLemma :: (Lemma IncrementalProof -> Bool) 
   -> Prover
   -> ClosedTheory
-  -> Lemma IncrementalProof
+  -> Lemma IncrementalProof 
   -> [Lemma p]
-  -> Lemma IncrementalProof
+  -> Lemma IncrementalProof 
 proveLemma selector prover thy lem preItems
   | selector lem = modify lProof add lem
   | otherwise    = lem
@@ -2480,23 +2345,9 @@ proveLemma selector prover thy lem preItems
     sys     = mkSystem ctxt (theoryRestrictions thy) (fmap LemmaItem preItems) $ L.get lFormula lem
     add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
 
-proveTimedLemma :: (TLemma IncrementalProof -> Bool)
-  -> Prover
-  -> ClosedTimedTheory
-  -> TLemma IncrementalProof
-  -> [TLemma p]
-  -> TLemma IncrementalProof
-proveTimedLemma selector prover thy lem preItems
-  | selector lem = modify lTimedProof add lem
-  | otherwise    = lem
-  where
-    ctxt    = getTimedProofContext lem thy
-    sys     = mkTimedSystem ctxt (timedTheoryRestrictions thy) (fmap TimedLemmaItem preItems) $ L.get lTimedFormula lem
-    add prf = fromMaybe prf $ runProver prover ctxt 0 sys prf
-
 -- | `updateState f a` fetches history h from state, invokes `f a h` and adds `a` to history
 updateState :: Monad m => (t -> [b] -> m b) -> t -> ST.StateT [b] m b
-updateState f a = do
+updateState f a = do 
               h <- ST.get
               res <- lift $ f a h
               ST.modify (res :)
@@ -2561,30 +2412,6 @@ mkSystem ctxt restrictions previousItems =
                 && (L.get lName lem) `notElem` (L.get pcHiddenLemmas ctxt)
                 && "ALL" `notElem` (L.get pcHiddenLemmas ctxt)
         return $ formulaToGuarded_ $ L.get lFormula lem
-
-mkTimedSystem :: ProofContext -> [Restriction] -> [TimedTheoryItem r p s]
-         -> LNFormula -> System
-mkTimedSystem ctxt restrictions previousItems =
-    -- Note that it is OK to add reusable lemmas directly to the system, as
-    -- they do not change the considered set of traces. This is the key
-    -- difference between lemmas and restrictions.
-    addLemmas
-  . formulaToSystem (map (formulaToGuarded_ . L.get rstrFormula) restrictions)
-                    (L.get pcSourceKind ctxt)
-                    (L.get pcTraceQuantifier ctxt) False
-  where
-    addLemmas sys =
-        insertLemmas (gatherReusableLemmas $ L.get sSourceKind sys) sys
-
-    gatherReusableLemmas kind = do
-        TimedLemmaItem lem <- previousItems
-        guard $    timedLemmaSourceKind lem <= kind
-                && ReuseLemma `elem` L.get lTimedAttributes lem
-                && AllTraces == L.get lTimedTraceQuantifier lem
-                && (L.get lTimedName lem) `notElem` (L.get pcHiddenLemmas ctxt)
-                && "ALL" `notElem` (L.get pcHiddenLemmas ctxt)
-        return $ formulaToGuarded_ $ L.get lTimedFormula lem
-
 
 -- | Construct a constraint system for verifying the given formula.
 mkSystemDiff :: Side -> ProofContext -> [(Side, Restriction)] -> [DiffTheoryItem r r2 p p2]
